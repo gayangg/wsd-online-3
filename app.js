@@ -1,6 +1,6 @@
-import { serve } from "./deps.js";
-import { configure, renderFile } from "./deps.js";
-import { sql } from "./database/database.js";
+import { serve } from "https://deno.land/std@0.222.1/http/server.ts";
+import { configure, renderFile } from "https://deno.land/x/eta@v2.2.0/mod.ts";
+import * as chatServices from "./services/chatService.js";
 
 configure({
   views: `${Deno.cwd()}/views/`,
@@ -10,28 +10,40 @@ const responseDetails = {
   headers: { "Content-Type": "text/html;charset=UTF-8" },
 };
 
-const data = {
-  count: 0,
+const redirectTo = (path) => {
+  return new Response(`Redirecting to ${path}.`, {
+    status: 303,
+    headers: {
+      "Location": path,
+    },
+  });
+};
+
+const addChat = async (request) => {
+  const formData = await request.formData();
+
+  const sender = formData.get("sender");
+  const message = formData.get("message");
+
+  await chatServices.create(sender, message);
+
+  return redirectTo("/");
+};
+
+const getLatest = async (request) => {
+    const data = {
+        messages: await chatServices.getResentMessages(),
+    };
+    return new Response(await renderFile("index.eta", data), responseDetails);
 };
 
 const handleRequest = async (request) => {
   const url = new URL(request.url);
-  if (url.pathname === "/count") {
-    data.count++;
-    return new Response(await renderFile("count.eta", data), responseDetails);
+  if (request.method === "POST") {
+    return await addChat(request);
+  } else {
+    return await getLatest(request);
   }
-
-  if (url.pathname === "/addresses") {
-    const rows = await sql`SELECT COUNT(*) as count FROM addresses`;
-    let rowCount = -42;
-    if (rows.length > 0) {
-      rowCount = rows[0].count;
-    }
-
-    return new Response(`Total rows: ${rowCount}`);
-  }
-
-  return new Response("Hello you!");
 };
 
 serve(handleRequest, { port: 7777 });
